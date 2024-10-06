@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# Nom du fichier JSON
+JSON_FILE="files.json"
+
+# Lire le fichier JSON pour extraire le nom de la classe principale et les fichiers auxiliaires
+MAIN_FILE=$(jq -r '.main_file' "$JSON_FILE")
+AUX_FILES=$(jq -r '.aux_files[]' "$JSON_FILE")
+
+# Vérifier que le fichier principal existe
+if [ -z "$MAIN_FILE" ] || [ ! -f "$MAIN_FILE" ]; then
+  echo "Erreur: Fichier principal $MAIN_FILE non trouvé."
+  exit 1
+fi
+
+# Créer le dossier build s'il n'existe pas
+mkdir -p buildOutput
+
+# Nom de l'exécutable basé sur le fichier principal
+EXECUTABLE_NAME="buildOutput/$(basename "$MAIN_FILE" .c).exe"
+
+# Compiler le projet avec gcc
+gcc -I src/.include -Wall -Wextra -Wno-unused-parameter "$MAIN_FILE" $AUX_FILES -o "$EXECUTABLE_NAME" -lm #-fsanatize=address
+
+# Vérifier si la compilation a réussi
+if [ $? -eq 0 ]; then
+  echo "Compilation réussie. Exécutable créé : $EXECUTABLE_NAME"
+else
+  echo "Erreur de compilation."
+fi
