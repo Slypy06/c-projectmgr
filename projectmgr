@@ -11,7 +11,90 @@ usage() {
     echo "  build NAME"
     echo "  run NAME [args...]"
     echo "  files NAME [args...]"
+    echo "  update"
     exit 1
+}
+
+update_projectmgr() {
+    PROJECTMGR_URL="https://raw.githubusercontent.com/Slypy06/c-projectmgr/main/projectmgr"
+    PROJECTMGR_FILE="projectmgr"
+    echo "Updating $PROJECTMGR_FILE..."
+
+    # Download the projectmgr file from the URL
+    curl -s -o "$PROJECTMGR_FILE" "$PROJECTMGR_URL"
+
+    if [ $? -ne 0 ]; then
+        echo "Failed to download $PROJECTMGR_FILE."
+        exit 1
+    fi
+
+    echo "$PROJECTMGR_FILE updated successfully."
+}
+
+# Function to update the .template folder
+update_template() {
+    TEMPLATE_DIR=".template"
+    TEMPLATE_URL="https://api.github.com/repos/Slypy06/c-projectmgr/contents/.template"
+    RAW_TEMPLATE_BASE_URL="https://raw.githubusercontent.com/Slypy06/c-projectmgr/main/.template"
+
+    echo "Updating $TEMPLATE_DIR folder..."
+
+    # Delete the existing .template folder
+    if [ -d "$TEMPLATE_DIR" ]; then
+        echo "Deleting existing $TEMPLATE_DIR folder..."
+        rm -rf "$TEMPLATE_DIR"
+    fi
+
+    # Create the new .template directory
+    mkdir -p "$TEMPLATE_DIR"
+
+    # Function to recursively download .template folder contents
+    download_template_folder() {
+        local api_url="$1"
+        local dest_dir="$2"
+
+        # Make sure the destination directory exists
+        mkdir -p "$dest_dir"
+
+        # Get the list of files/folders from the GitHub API
+        response=$(curl -s "$api_url")
+
+        # Loop through each element in the JSON response
+        echo "$response" | jq -c '.[]' | while read -r item; do
+        # Extract name, type, and download URL
+        name=$(echo "$item" | jq -r '.name')
+        type=$(echo "$item" | jq -r '.type')
+        download_url=$(echo "$item" | jq -r '.download_url')
+
+        # If the element is a file, download it
+        if [ "$type" == "file" ]; then
+            echo "Downloading file: $name to $dest_dir"
+            curl -s "$download_url" -o "$dest_dir/$name"
+
+            if [ $? -ne 0 ]; then
+            echo "Failed to download $name."
+            exit 1
+            fi
+
+        elif [ "$type" == "dir" ]; then
+            # If the element is a directory, recursively download its contents
+            echo "Entering directory: $name"
+            download_template_folder "$api_url/$name" "$dest_dir/$name"
+        fi
+        done
+    }
+
+    # Download the .template folder contents
+    download_template_folder "$TEMPLATE_URL" "$TEMPLATE_DIR"
+
+    echo "$TEMPLATE_DIR folder updated successfully."
+}
+
+update() {
+
+    update_projectmgr
+    update_template
+
 }
 
 # Function to create a new project
@@ -197,5 +280,6 @@ case $mode in
     info) print_info "$@" ;;
     list) list_projects ;;
     files) execute_filesmgr_project "$@" ;;
+    update) update ;;
     *) usage ;;
 esac
