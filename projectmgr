@@ -1,0 +1,185 @@
+#!/bin/bash
+
+# Function to print usage information
+usage() {
+    echo "Usage: $0 {create|remove|info|list|build|run} [options]"
+    echo "Modes:"
+    echo "  create NAME [-m mainfilename] [-d description] [-v version] [-a author]"
+    echo "  remove NAME"
+    echo "  info NAME [-d -v -a -m -f -b]"
+    echo "  list"
+    echo "  build NAME"
+    echo "  run NAME [args...]"
+    exit 1
+}
+
+# Function to create a new project
+create_project() {
+    local name="$1"
+    shift
+    local main_file="src/${name}.c"
+    local description="No description"
+    local version="1.0.0"
+    local author=$(whoami)
+
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            -m) main_file="src/$2.c"; shift ;;
+            -d) description="$2"; shift ;;
+            -v) version="$2"; shift ;;
+            -a) author="$2"; shift ;;
+            *) usage ;;
+        esac
+        shift
+    done
+
+    if [[ -d "$name" ]]; then
+        echo "Project folder '$name' already exists."
+        exit 1
+    fi
+
+    mkdir -p "$name/src"
+    cp -r .template/* "$name/"
+    cat << EOF > "$name/$main_file"
+#include <stdio.h>
+
+int main(int argSize, char** args) {
+    // Your code here
+    return 0;
+}
+EOF
+    
+    # Update files.json
+    jq --arg main_file "${main_file}" '.main_file = $main_file' "$name/files.json" > "$name/files_tmp.json" && mv "$name/files_tmp.json" "$name/files.json"
+
+    # Update info.json
+    jq --arg author "$author" --arg description "$description" --arg version "$version" \
+        '.author = $author | .description = $description | .version = $version' "$name/info.json" > "$name/info_tmp.json" && mv "$name/info_tmp.json" "$name/info.json"
+
+    # Make scripts executable
+    chmod +x "$name/build" "$name/run" "$name/filesmgr"
+
+}
+
+# Function to remove a project
+remove_project() {
+    local name="$1"
+
+    if [[ ! -d "$name" ]] || [[ ! -f "$name/info.json" ]]; then
+        echo "Project '$name' does not exist or is not a valid project."
+        exit 1
+    fi
+
+    rm -rf "$name"
+}
+
+# Function to build a project
+build_project() {
+    local name="$1"
+
+    if [[ ! -d "$name" ]] || [[ ! -f "$name/build" ]]; then
+        echo "Project '$name' does not exist or is missing a build script."
+        exit 1
+    fi
+
+    (cd "$name" && ./build)
+}
+
+# Function to run a project
+run_project() {
+    local name="$1"
+    shift
+
+    if [[ ! -d "$name" ]] || [[ ! -f "$name/run" ]]; then
+        echo "Project '$name' does not exist or is missing a run script."
+        exit 1
+    fi
+
+    (cd "$name" && ./run "$@")
+}
+
+# Function to print project info
+print_info() {
+    local name="$1"
+    shift
+    local opts=("$@")
+    local info_json="$name/info.json"
+    local files_json="$name/files.json"
+
+    if [[ ! -d "$name" ]] || [[ ! -f "$info_json" ]] || [[ ! -f "$files_json" ]]; then
+        echo "Project '$name' does not exist or is missing necessary files."
+        exit 1
+    fi
+
+    local main_file=$(jq -r '.main_file' "$files_json")
+    
+    local build="${main_file%.c}"
+
+    if [[ -f "$name/buildOutput/${build#src/}.exe" ]]; then
+        build_date=$(stat -c %y "$name/buildOutput/${build#src/}.exe")
+    fi
+
+    if [[ ${#opts[@]} -eq 0 ]]; then
+        echo "Project Info:"
+        echo "-------------------------------"
+        echo "Name: $(basename "$name")"
+        echo "Description: $(jq -r '.description' "$info_json")"
+        echo "Version: $(jq -r '.version' "$info_json")"
+        echo "Author: $(jq -r '.author' "$info_json")"
+        echo "Main File: ${main_file#src/}"
+        echo "Aux Files:"
+        jq -r '.aux_files[]' "$files_json" | sed 's/src\///'
+        echo "Last Build Date: $build_date"
+        echo "-------------------------------"
+    else
+        for opt in "${opts[@]}"; do
+            case $opt in
+                -d) echo "Description: $(jq -r '.description' "$info_json")" ;;
+                -v) echo "Version: $(jq -r '.version' "$info_json")" ;;
+                -a) echo "Author: $(jq -r '.author' "$info_json")" ;;
+                -m) echo "Main File: ${main_file#src/}" ;;
+                -f) echo "Aux Files:"; jq -r '.aux_files[]' "$files_json" | sed 's/src\///' ;;
+                -b) echo "Last Build Date: $build_date" ;;
+                *) echo "Unknown option: $opt"; usage ;;
+            esac
+        done
+    fi
+}
+
+# Function to list all projects
+list_projects() {
+    echo "Projects List:"
+    echo "-------------------------------"
+    for project in */; do
+        if [[ -d "$project" && -f "${project}info.json" ]]; then
+            local name=$(basename "$project")
+            local description=$(jq -r '.description' "${project}info.json")
+            local author=$(jq -r '.author' "${project}info.json")
+            local version=$(jq -r '.version' "${project}info.json")
+            echo "Name: $name"
+            echo "Description: $description"
+            echo "Author: $author"
+            echo "Version: $version"
+            echo "-------------------------------"
+        fi
+    done
+}
+
+# Main script logic
+if [[ $# -lt 1 ]]; then
+    list_projects
+    exit 0
+fi
+
+mode="$1"
+shift
+
+case $mode in
+    create) create_project "$@" ;;
+    remove) remove_project "$@" ;;
+    build) build_project "$@" ;;
+    run) run_project "$@" ;;
+    info) print_info "$@" ;;
+    list) list_projects ;;
+    *) usage ;;
+esac
