@@ -68,12 +68,17 @@ update_template() {
 
         # If the element is a file, download it
         if [ "$type" == "file" ]; then
-            echo "Downloading file: $name to $dest_dir"
-            curl -s "$download_url" -o "$dest_dir/$name"
 
-            if [ $? -ne 0 ]; then
-            echo "Failed to download $name."
-            exit 1
+            if [ "$name" != ".placeholder" ]; then
+
+                echo "Downloading file: $name to $dest_dir"
+                curl -s "$download_url" -o "$dest_dir/$name"
+
+                if [ $? -ne 0 ]; then
+                echo "Failed to download $name."
+                exit 1
+                fi
+
             fi
 
         elif [ "$type" == "dir" ]; then
