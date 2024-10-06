@@ -10,6 +10,7 @@ usage() {
     echo "  list"
     echo "  build NAME"
     echo "  run NAME [args...]"
+    echo "  files NAME [args...]"
     exit 1
 }
 
@@ -98,6 +99,18 @@ run_project() {
     (cd "$name" && ./run "$@")
 }
 
+execute_filesmgr_project() {
+    local name="$1"
+    shift
+
+    if [[ ! -d "$name" ]] || [[ ! -f "$name/filesmgr" ]]; then
+        echo "Project '$name' does not exist or is missing a filesmgr script."
+        exit 1
+    fi
+
+    (cd "$name" && ./filesmgr "$@")
+}
+
 # Function to print project info
 print_info() {
     local name="$1"
@@ -129,6 +142,8 @@ print_info() {
         echo "Main File: ${main_file#src/}"
         echo "Aux Files:"
         jq -r '.aux_files[]' "$files_json" | sed 's/src\///'
+        echo "Installed Libs :"
+        jq -r '.libs[] | "  \(.name) by \(.author) (\(.version)) - \(.desc)"' "$info_json"
         echo "Last Build Date: $build_date"
         echo "-------------------------------"
     else
@@ -181,5 +196,6 @@ case $mode in
     run) run_project "$@" ;;
     info) print_info "$@" ;;
     list) list_projects ;;
+    files) execute_filesmgr_project "$@" ;;
     *) usage ;;
 esac
