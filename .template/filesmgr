@@ -7,6 +7,7 @@ usage() {
     echo "  create FILE_NAME [-p package]"
     echo "  remove FILE_NAME"
     echo "  edit-main NEW_MAIN_FILE"
+    echo "  install LIB_NAME"
     exit 1
 }
 
@@ -16,6 +17,132 @@ update_files_json() {
 
     # Update files.json with new main file
     jq --arg main_file "$main_file" '.main_file = $main_file' files.json > files_tmp.json && mv files_tmp.json files.json
+}
+
+is_lib_installed() {
+  jq -e --arg folder "$FOLDER_NAME" '.libs | map(select(.name == $folder)) | length > 0' "$INFO_FILE" > /dev/null
+}
+
+download_folder() {
+  local api_url="$1"
+  local dest_dir="$2"
+
+  # Make sure the destination directory exists
+  mkdir -p "$dest_dir"
+
+  # Get the list of files/folders from the GitHub API
+  response=$(curl -s "$api_url")
+
+  # Loop through each element in the JSON response
+  echo "$response" | jq -c '.[]' | while read -r item; do
+    # Extract name, type, and download URL
+    name=$(echo "$item" | jq -r '.name')
+    type=$(echo "$item" | jq -r '.type')
+    download_url=$(echo "$item" | jq -r '.download_url')
+
+    # If the element is a file, download it
+    if [ "$type" == "file" ]; then
+        echo "Downloading file: $name to $dest_dir"
+        curl -s "$download_url" -o "$dest_dir/$name"
+
+        if [[ "$name" == *.c ]]; then
+            echo "Adding $dest_dir/$name to files.json aux_files."
+            updated_files_json=$(jq --arg file "$dest_dir/$name" '.aux_files += [$file]' files.json)
+            echo "$updated_files_json" > files.json
+        fi
+
+    elif [ "$type" == "dir" ]; then
+      # If the element is a directory, recursively download its contents
+      echo "Entering directory: $name"
+      download_folder "$api_url/$name" "$dest_dir/$name"
+    fi
+  done
+}
+
+install_lib() {
+
+    if [ -z "$1" ]; then
+    echo "Usage: $0 <folder_name>"
+    exit 1
+    fi
+
+    # Set the folder name from the first argument
+    FOLDER_NAME="$1"
+
+    INFO_FILE="info.json"
+    FILES_JSON="files.json"
+ 
+    if jq -e --arg folder "$FOLDER_NAME" '.libs | map(select(.name == $folder)) | length > 0' "$INFO_FILE" > /dev/null; then
+        echo "Library '$FOLDER_NAME' is already installed in $INFO_FILE."
+        exit 0
+    fi
+
+    # URL to check the contents of the /libs directory
+    GITHUB_API_URL="https://api.github.com/repos/Slypy06/c-projectmgr/contents/libs"
+    GITHUB_RAW_URL="https://raw.githubusercontent.com/Slypy06/c-projectmgr/main/libs/$FOLDER_NAME/info.json"
+
+    MACRO_DIR="src/.macro"
+    INCLUDE_DIR="src/.include"
+    SRC_DIR="src"
+
+    # Get the list of folders from the GitHub API
+    response=$(curl -s "$GITHUB_API_URL")
+
+    # Check if the folder exists in the response
+    folder_exists=$(echo "$response" | jq -r --arg folder "$FOLDER_NAME" '.[] | select(.name == $folder) | .name')
+
+    if [ "$folder_exists" == "$FOLDER_NAME" ]; then
+        echo "Folder '$FOLDER_NAME' found in the repository."
+        
+        # Download the corresponding info.json file from the raw URL
+        info_json=$(curl -s "$GITHUB_RAW_URL")
+
+        if [ -z "$info_json" ]; then
+            echo "Failed to fetch info.json from $GITHUB_RAW_URL"
+            exit 1
+        fi
+
+        # Check if the local info.json exists
+        if [ ! -f "info.json" ]; then
+            echo "Local info.json not found, creating a new one."
+            echo '{"libs": []}' > info.json
+        fi
+
+        # Add the downloaded info.json to the "libs" attribute in the local info.json
+        updated_json=$(jq --argjson new_lib "$info_json" '.libs += [$new_lib]' info.json)
+
+        # Save the updated JSON back to the local info.json file
+        echo "$updated_json" > info.json
+
+        echo "info.json updated successfully."
+
+        lib_type=$(echo "$info_json" | jq -r '.type')
+
+        # Handle based on the library type (macro or code)
+        if [ "$lib_type" == "macro" ]; then
+            echo "Library type is 'macro'. Copying header files to $MACRO_DIR."
+
+            # Download header files to src/.macro
+            download_folder "$GITHUB_API_URL/$FOLDER_NAME/header" "$MACRO_DIR"
+
+        elif [ "$lib_type" == "code" ]; then
+            echo "Library type is 'code'. Copying header files to $INCLUDE_DIR and source files to $SRC_DIR."
+
+            # Download header files to src/.include
+            download_folder "$GITHUB_API_URL/$FOLDER_NAME/header" "$INCLUDE_DIR"
+
+            # Download source files to src
+            download_folder "$GITHUB_API_URL/$FOLDER_NAME/source" "$SRC_DIR"
+        else
+            echo "Unknown library type: $lib_type"
+            exit 1
+        fi
+
+    else
+    echo "Folder '$FOLDER_NAME' not found in the repository."
+    exit 1
+    fi
+
 }
 
 # Function to create a new file
@@ -54,7 +181,7 @@ create_file() {
     mkdir -p "src/.include/$package_path"
 
     # Create .c and .h files with basic content
-    if[["$package_path" == ""]]; then
+    if [[ "$package_path" == "" ]]; then
         echo "#include \"${file_name}.h\"" > "$c_file"
     else
         echo "#include \"${package_path}/${file_name}.h\"" > "$c_file"
@@ -146,5 +273,6 @@ case $mode in
     create) create_file "$@" ;;
     remove) remove_file "$@" ;;
     edit-main) edit_main_file "$@" ;;
+    install) install_lib "$@" ;;
     *) usage ;;
 esac
