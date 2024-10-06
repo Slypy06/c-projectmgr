@@ -19,10 +19,6 @@ update_files_json() {
     jq --arg main_file "$main_file" '.main_file = $main_file' files.json > files_tmp.json && mv files_tmp.json files.json
 }
 
-is_lib_installed() {
-  jq -e --arg folder "$FOLDER_NAME" '.libs | map(select(.name == $folder)) | length > 0' "$INFO_FILE" > /dev/null
-}
-
 download_folder() {
   local api_url="$1"
   local dest_dir="$2"
@@ -71,11 +67,6 @@ install_lib() {
 
     INFO_FILE="info.json"
     FILES_JSON="files.json"
- 
-    if jq -e --arg folder "$FOLDER_NAME" '.libs | map(select(.name == $folder)) | length > 0' "$INFO_FILE" > /dev/null; then
-        echo "Library '$FOLDER_NAME' is already installed in $INFO_FILE."
-        exit 0
-    fi
 
     # URL to check the contents of the /libs directory
     GITHUB_API_URL="https://api.github.com/repos/Slypy06/c-projectmgr/contents/libs"
@@ -106,6 +97,28 @@ install_lib() {
         if [ ! -f "info.json" ]; then
             echo "Local info.json not found, creating a new one."
             echo '{"libs": []}' > info.json
+        else
+            if jq -e --arg folder "$FOLDER_NAME" '.libs | map(select(.name == $folder)) | length > 0' "$INFO_FILE" > /dev/null; then
+                echo "Library '$FOLDER_NAME' is already installed in $INFO_FILE."
+
+                installed_version=$(jq -r --arg folder "$FOLDER_NAME" '.libs[] | select(.name == $folder) | .version' "$INFO_FILE")
+                repo_version=$(echo "$info_json" | jq -r '.version')
+
+                echo "Installed version: $installed_version"
+                echo "Repository version: $repo_version"
+
+                # Compare versions
+                if [ "$installed_version" != "$repo_version" ]; then
+                    echo "Versions differ. Removing old entry from $INFO_FILE."
+                    
+                    # Remove the existing library entry from info.json
+                    updated_info_json=$(jq --arg folder "$FOLDER_NAME" 'del(.libs[] | select(.name == $folder))' "$INFO_FILE")
+                    echo "$updated_info_json" > "$INFO_FILE"
+                else
+                    echo "Library is up to date."
+                    exit 0
+                fi
+            fi
         fi
 
         # Add the downloaded info.json to the "libs" attribute in the local info.json
