@@ -54,7 +54,7 @@ EOF
 
     # Update info.json
     jq --arg author "$author" --arg description "$description" --arg version "$version" \
-        '.author = $author | .description = $description | .version = $version' "$name/info.json" > "$name/info_tmp.json" && mv "$name/info_tmp.json" "$name/info.json"
+        '.author = $author | .description = $description | .version = $version | .libs = []' "$name/info.json" > "$name/info_tmp.json" && mv "$name/info_tmp.json" "$name/info.json"
 
     # Make scripts executable
     chmod +x "$name/build" "$name/run" "$name/filesmgr"
