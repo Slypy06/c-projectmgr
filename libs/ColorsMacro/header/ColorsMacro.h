@@ -1,4 +1,6 @@
 #define BACKGROUND(num) "\x1b[48;5;" #num "m"
 #define FOREGROUND(num) "\x1b[38;5;" #num "m"
+#define FOREGROUND_RGB(r,g,b) "\x1b[38;2;"#r";"#g";"#b"m"
+#define BACKGROUND_RGB(r,g,b) "\x1b[48;2;"#r";"#g";"#b"m"
 #define FOREGROUND_RESET "\x1b[39m"
 #define BACKGROUND_RESET "\x1b[49m"
