@@ -200,7 +200,7 @@ create_file() {
         echo "#include \"${package_path}/${file_name}.h\"" > "$c_file"
     fi
 
-    echo "#ifndef ${file_name^^}_H\n#define ${file_name^^}_H\n/* Header file for $file_name */\n#endif" > "$h_file"
+    echo -e "#ifndef __${file_name^^}_H__\n#define __${file_name^^}_H__\n/* Header file for $file_name */\n#endif" > "$h_file"
     
     # Update files.json
     jq --arg file "${file_path}.c" '.aux_files += [$file]' files.json > files_tmp.json && mv files_tmp.json files.json
