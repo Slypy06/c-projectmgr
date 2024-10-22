@@ -20,7 +20,7 @@ mkdir -p buildOutput
 EXECUTABLE_NAME="buildOutput/$(basename "$MAIN_FILE" .c).exe"
 
 # Compiler le projet avec gcc
-gcc -I src/.include -I src/.macro -Wall -Wextra -Wno-unused-parameter -g "$MAIN_FILE" $AUX_FILES -o "$EXECUTABLE_NAME" -lm #-fsanatize=address
+gcc -I src/.include -I src/.macro -Wall -Wextra -Wno-unused-parameter -g "$MAIN_FILE" $AUX_FILES -o "$EXECUTABLE_NAME" "$@" #-fsanatize=address
 
 # Vérifier si la compilation a réussi
 if [ $? -eq 0 ]; then
